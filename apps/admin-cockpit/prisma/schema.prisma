@@ -1,0 +1,479 @@
+// Smart E-Commerce Platform - Prisma Schema
+// Optimized for Neon PostgreSQL with AI features
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// User & Authentication
+model User {
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  email         String    @unique
+  firstName     String?
+  lastName      String?
+  imageUrl      String?
+  role          UserRole  @default(CUSTOMER)
+
+  // Customer specific fields
+  cart          Cart?
+  orders        Order[]
+  reviews       Review[]
+  wishlist      Wishlist[]
+  priceAlerts   PriceAlert[]
+  searchHistory SearchHistory[]
+  preferences   UserPreference?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([clerkId])
+  @@index([email])
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// User Preferences for AI Personalization
+model UserPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categories        String[] // Preferred categories
+  priceRangeMin     Float?
+  priceRangeMax     Float?
+  brands            String[]
+  notifyPriceDrops  Boolean  @default(true)
+  notifyNewArrivals Boolean  @default(true)
+  notifyRestocks    Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Products
+model Product {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  description       String   @db.Text
+  shortDescription  String?
+
+  price             Float
+  compareAtPrice    Float?   // Original price for discount display
+  costPrice         Float?   // For profit calculations
+
+  sku               String   @unique
+  barcode           String?
+
+  // Inventory
+  stock             Int      @default(0)
+  lowStockThreshold Int      @default(10)
+  trackInventory    Boolean  @default(true)
+
+  // Organization
+  categoryId        String
+  category          Category @relation(fields: [categoryId], references: [id])
+
+  brand             String?
+  tags              String[]
+
+  // Media
+  images            ProductImage[]
+  thumbnail         String?
+
+  // SEO & AI
+  metaTitle         String?
+  metaDescription   String?
+  searchKeywords    String[] // For semantic search
+  aiGenerated       Boolean  @default(false) // Track AI-assisted products
+  aiImageGenerated  Boolean  @default(false) // AI generated images
+  aiDescGenerated   Boolean  @default(false) // AI generated description
+  vectorId          String?  @unique // Pinecone vector ID for semantic search
+
+  // Product specifications (for AI to understand product better)
+  specifications    Json?     // Flexible field for product specs
+  dimensions        String?   // e.g., "10x20x5 cm"
+  weight            Float?    // in grams
+  color             String?
+  size              String?
+  material          String?
+
+  // Status
+  status            ProductStatus @default(DRAFT)
+  featured          Boolean  @default(false)
+  trending          Boolean  @default(false)
+
+  // Relationships
+  reviews           Review[]
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  wishlist          Wishlist[]
+  priceHistory      PriceHistory[]
+  priceAlerts       PriceAlert[]
+
+  // Analytics
+  views             Int      @default(0)
+  purchases         Int      @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  publishedAt       DateTime?
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([status])
+  @@index([featured])
+  @@index([trending])
+  @@index([sku])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  OUT_OF_STOCK
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  url       String
+  alt       String?
+  position  Int      @default(0)
+
+  // AI Generation metadata
+  aiGenerated       Boolean  @default(false)
+  generationPrompt  String?  @db.Text // Prompt used to generate image
+  sourceImageUrl    String?  // If generated from an uploaded image
+  modelUsed         String?  // e.g., "gemini-pro-vision", "dall-e-3"
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?    @db.Text
+  image       String?
+
+  // SEO & Metadata
+  metaTitle       String?
+  metaDescription String?
+  keywords        String[]  // For search optimization
+
+  // Hierarchy
+  parentId    String?
+  parent      Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToCategory")
+
+  products    Product[]
+
+  // Display & Analytics
+  position    Int        @default(0)
+  isActive    Boolean    @default(true)
+  isFeatured  Boolean    @default(false)
+  productCount Int       @default(0) // Cache count for performance
+
+  // AI Enhancement
+  aiGenerated Boolean    @default(false)
+  icon        String?    // Icon name/emoji for category
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive])
+}
+
+// Shopping Cart
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items     CartItem[]
+
+  // Abandoned cart recovery
+  status    CartStatus @default(ACTIVE)
+  recoveryEmailSent Boolean @default(false)
+  recoveryEmailSentAt DateTime?
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum CartStatus {
+  ACTIVE
+  ABANDONED
+  CONVERTED
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  quantity  Int      @default(1)
+  price     Float    // Price at time of adding to cart
+
+  // AI Bargaining
+  negotiatedPrice Float?
+  discountApplied Float?  @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+// Orders
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+
+  items           OrderItem[]
+
+  // Pricing
+  subtotal        Float
+  tax             Float       @default(0)
+  shipping        Float       @default(0)
+  discount        Float       @default(0)
+  total           Float
+
+  // Payment
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentIntentId String?     @unique // Stripe Payment Intent ID
+  paymentMethod   String?
+
+  // Shipping
+  shippingAddress Json
+  billingAddress  Json
+  trackingNumber  String?
+
+  // Status
+  status          OrderStatus @default(PENDING)
+
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([paymentStatus])
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  quantity  Int
+  price     Float   // Price at time of purchase
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Reviews
+model Review {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  rating    Int      // 1-5
+  title     String?
+  comment   String   @db.Text
+
+  verified  Boolean  @default(false) // Verified purchase
+  helpful   Int      @default(0)
+
+  status    ReviewStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Wishlist
+model Wishlist {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  notifyOnDiscount Boolean @default(true)
+  notifyOnRestock  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+// Price Tracking & Alerts
+model PriceHistory {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  price     Float
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model PriceAlert {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  targetPrice Float
+  triggered   Boolean  @default(false)
+  notified    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  triggeredAt DateTime?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([triggered])
+}
+
+// Search & AI
+model SearchHistory {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  query     String
+  results   Int      @default(0)
+  clicked   String[] // Product IDs that were clicked
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Admin Analytics
+model TrendAnalysis {
+  id            String   @id @default(cuid())
+
+  productId     String?
+  category      String?
+
+  metric        String   // e.g., "views", "sales", "searches"
+  value         Float
+  change        Float    // Percentage change
+
+  period        String   // e.g., "daily", "weekly", "monthly"
+  date          DateTime
+
+  aiPrediction  Boolean  @default(false)
+  confidence    Float?   // 0-1 for AI predictions
+
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+  @@index([date])
+  @@index([metric])
+}
+
+// Stock Alerts
+model StockAlert {
+  id          String   @id @default(cuid())
+  productId   String
+
+  level       StockLevel
+  threshold   Int
+  resolved    Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  @@index([productId])
+  @@index([resolved])
+}
+
+enum StockLevel {
+  LOW
+  OUT_OF_STOCK
+  OVERSTOCKED
+}

@@ -1,0 +1,196 @@
+{
+  "name": "SmartCommerce - Price Drop Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "price-drop",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-price-drop",
+      "name": "Webhook - Price Drop",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "price-drop-alert"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.email, u.firstName, p.name as productName, p.price as newPrice, pa.targetPrice\nFROM \"PriceAlert\" pa\nJOIN \"User\" u ON pa.userId = u.id\nJOIN \"Product\" p ON pa.productId = p.id\nWHERE pa.productId = '{{$json[\"productId\"]}}'\nAND pa.triggered = false\nAND p.price <= pa.targetPrice",
+        "options": {}
+      },
+      "id": "query-alerts",
+      "name": "Query Price Alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Neon PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"length\"]}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-alerts",
+      "name": "Check If Alerts Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@smartcommerce.com",
+        "toEmail": "={{$json[\"email\"]}}",
+        "subject": "Price Drop Alert: {{$json[\"productName\"]}}",
+        "text": "Hi {{$json[\"firstName\"]}},\n\nGreat news! The price of {{$json[\"productName\"]}} has dropped!\n\nYour target price: ${{$json[\"targetPrice\"]}}\nNew price: ${{$json[\"newPrice\"]}}\nYou save: ${{$json[\"targetPrice\"] - $json[\"newPrice\"]}}\n\nDon't miss out! Visit our store now:\nhttps://smartcommerce.com/products/{{$json[\"productId\"]}}\n\nHappy Shopping!\nSmartCommerce Team",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [910, 200],
+      "credentials": {
+        "smtp": {
+          "id": "2",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE \"PriceAlert\"\nSET triggered = true, notified = true, triggeredAt = NOW()\nWHERE productId = '{{$json[\"productId\"]}}'\nAND userId = (SELECT id FROM \"User\" WHERE email = '{{$json[\"email\"]}}')",
+        "options": {}
+      },
+      "id": "update-alert",
+      "name": "Mark Alert as Triggered",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1130, 200],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Neon PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Price drop alerts sent\", \"count\": {{$json[\"length\"]}}}",
+        "options": {}
+      },
+      "id": "response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true, \"message\": \"No alerts to send\"}",
+        "options": {}
+      },
+      "id": "no-alerts-response",
+      "name": "No Alerts Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [910, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Price Drop": {
+      "main": [
+        [
+          {
+            "node": "Query Price Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Price Alerts": {
+      "main": [
+        [
+          {
+            "node": "Check If Alerts Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Alerts Exist": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Alerts Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Notification": {
+      "main": [
+        [
+          {
+            "node": "Mark Alert as Triggered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Alert as Triggered": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-10-14T00:00:00.000Z",
+      "updatedAt": "2025-10-14T00:00:00.000Z",
+      "id": "1",
+      "name": "SmartCommerce"
+    }
+  ],
+  "meta": {
+    "instanceId": "smartcommerce"
+  }
+}

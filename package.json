@@ -1,0 +1,24 @@
+{
+  "name": "smart-ecommerce-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:customer": "npm run dev --workspace=apps/customer-website",
+    "dev:admin": "npm run dev --workspace=apps/admin-cockpit",
+    "dev:all": "npm run dev:customer & npm run dev:admin",
+    "build:customer": "npm run build --workspace=apps/customer-website",
+    "build:admin": "npm run build --workspace=apps/admin-cockpit",
+    "build:all": "npm run build --workspace=apps/customer-website && npm run build --workspace=apps/admin-cockpit",
+    "prisma:generate": "npm run prisma:generate --workspace=apps/customer-website",
+    "prisma:push": "npm run prisma:push --workspace=apps/customer-website",
+    "prisma:studio": "npm run prisma:studio --workspace=apps/customer-website"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
