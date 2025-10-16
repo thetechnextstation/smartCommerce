@@ -1,7 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
+// Check for required API key
+const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY
+
+if (!GOOGLE_AI_API_KEY) {
+  console.warn('Warning: GOOGLE_AI_API_KEY is not set')
+}
+
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '')
+const genAI = new GoogleGenerativeAI(GOOGLE_AI_API_KEY || '')
 
 /**
  * Generate product description using Gemini AI
@@ -12,7 +19,11 @@ export async function generateProductDescription(
   specifications?: Record<string, any>
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+    if (!GOOGLE_AI_API_KEY) {
+      throw new Error('Google AI API key is not configured')
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
     const specsText = specifications
       ? Object.entries(specifications)
@@ -53,7 +64,11 @@ export async function generateProductTags(
   category: string
 ): Promise<string[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+    if (!GOOGLE_AI_API_KEY) {
+      throw new Error('Google AI API key is not configured')
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
     const prompt = `Generate 5-10 relevant product tags for an e-commerce product.
 
@@ -95,29 +110,9 @@ Tags:`
 export async function generateImageFromPrompt(
   prompt: string
 ): Promise<string> {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
-
-    const enhancedPrompt = `Create a detailed, vivid image description for an AI image generator based on this prompt:
-
-"${prompt}"
-
-Generate a detailed image description that includes:
-1. Main subject and composition
-2. Lighting and atmosphere
-3. Colors and textures
-4. Style (photorealistic, artistic, etc.)
-5. Background and environment details
-
-Image Description:`
-
-    const result = await model.generateContent(enhancedPrompt)
-    const response = await result.response
-    return response.text()
-  } catch (error) {
-    console.error('Gemini image prompt generation error:', error)
-    throw new Error('Failed to generate image prompt')
-  }
+  // Return the prompt as-is or with minor enhancements
+  // DALL-E 3 is smart enough to understand prompts directly
+  return `${prompt}. Professional photography, high quality, detailed, well-lit, commercial product photography style.`
 }
 
 /**
@@ -128,31 +123,16 @@ export async function generateImageConcept(
   object: string,
   location: string
 ): Promise<string> {
-  try {
-    const genModel = genAI.getGenerativeModel({ model: 'gemini-pro' })
+  // Don't use Gemini for this - just create a good prompt directly
+  // This is more reliable and faster
+  const prompt = `Professional product photography: ${model} holding and displaying ${object} in ${location}.
+Lifestyle photography style with natural lighting.
+The model is interacting naturally with the product, showing it in use.
+Modern, clean composition with shallow depth of field.
+${location} setting provides context and atmosphere.
+High-quality, commercial photography aesthetic with warm, inviting tones.`
 
-    const prompt = `Create a detailed image description for an AI image generator that combines:
-
-Model/Person: ${model}
-Object/Product: ${object}
-Location/Setting: ${location}
-
-Generate a detailed, professional product photography concept that:
-1. Describes how the person/model interacts with or displays the object
-2. Details the location setting and ambiance
-3. Includes lighting suggestions
-4. Describes composition and framing
-5. Mentions style (e.g., lifestyle photography, studio shot, outdoor scene)
-
-Image Concept:`
-
-    const result = await genModel.generateContent(prompt)
-    const response = await result.response
-    return response.text()
-  } catch (error) {
-    console.error('Gemini image concept generation error:', error)
-    throw new Error('Failed to generate image concept')
-  }
+  return prompt
 }
 
 /**

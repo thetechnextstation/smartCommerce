@@ -7,13 +7,24 @@ import Link from "next/link";
 export default async function ProductsPage() {
   await AdminCheck();
 
-  // Fetch products with category info
+  // Fetch products with category info and variants
   const products = await db.product.findMany({
     include: {
       category: true,
       images: {
         take: 1,
         orderBy: { position: "asc" },
+      },
+      variants: {
+        include: {
+          baseProduct: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+            },
+          },
+        },
       },
     },
     orderBy: { createdAt: "desc" },

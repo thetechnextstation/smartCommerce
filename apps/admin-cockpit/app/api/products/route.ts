@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const categoryId = searchParams.get('categoryId')
     const status = searchParams.get('status')
+    const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
@@ -28,6 +29,14 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       where.status = status
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ]
     }
 
     const [products, total] = await Promise.all([
@@ -233,7 +242,7 @@ export async function POST(request: NextRequest) {
             }
           : undefined,
         // Create variants
-        variants: variants
+        variants: variants && variants.length > 0
           ? {
               create: variants.map((variant: any) => ({
                 name: variant.name,
@@ -246,6 +255,8 @@ export async function POST(request: NextRequest) {
                 options: variant.options || {},
                 image: variant.image,
                 images: variant.images || [],
+                isBaseProduct: variant.isBaseProduct || false,
+                baseProductId: variant.baseProductId || null,
                 isActive: variant.isActive !== undefined ? variant.isActive : true,
               })),
             }
@@ -298,10 +309,28 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(product, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating product:', error)
+
+    // Handle Prisma unique constraint errors
+    if (error.code === 'P2002') {
+      const field = error.meta?.target?.[0] || 'field'
+      return NextResponse.json(
+        { error: `A product with this ${field} already exists. Please use a different ${field}.` },
+        { status: 400 }
+      )
+    }
+
+    // Handle other Prisma errors
+    if (error.code?.startsWith('P')) {
+      return NextResponse.json(
+        { error: `Database error: ${error.message}` },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
-      { error: 'Failed to create product' },
+      { error: error.message || 'Failed to create product' },
       { status: 500 }
     )
   }

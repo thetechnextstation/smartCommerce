@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { AdminCheck } from "../admin-check";
-import { CategoriesGrid } from "./categories-grid";
+import { CategoriesTree } from "./categories-tree";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 
@@ -62,8 +62,8 @@ export default async function CategoriesPage() {
         </div>
       </div>
 
-      {/* Categories Grid */}
-      <CategoriesGrid categories={categories} />
+      {/* Categories Tree */}
+      <CategoriesTree categories={categories} />
     </div>
   );
 }

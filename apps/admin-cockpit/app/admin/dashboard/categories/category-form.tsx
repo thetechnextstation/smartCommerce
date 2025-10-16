@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Upload, Sparkles, ImagePlus } from "lucide-react";
 import Link from "next/link";
 
 interface Category {
@@ -21,6 +21,9 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [generatingContent, setGeneratingContent] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatingSEO, setGeneratingSEO] = useState(false);
 
   const [formData, setFormData] = useState({
     name: category?.name || "",
@@ -86,6 +89,114 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
     }
   };
 
+  const handleGenerateContent = async () => {
+    if (!formData.name) {
+      alert("Please enter a category name first");
+      return;
+    }
+
+    setGeneratingContent(true);
+    try {
+      const parentCategory = parentCategories.find((c) => c.id === formData.parentId);
+
+      const response = await fetch("/api/ai/generate-category-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryName: formData.name,
+          isSubcategory: !!formData.parentId,
+          parentCategoryName: parentCategory?.name || "",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Generation failed");
+
+      const data = await response.json();
+      setFormData((prev) => ({
+        ...prev,
+        description: data.description,
+        metaTitle: data.metaTitle,
+        metaDescription: data.metaDescription,
+        keywords: data.keywords.join(", "),
+      }));
+    } catch (error) {
+      console.error("Generation error:", error);
+      alert("Failed to generate content");
+    } finally {
+      setGeneratingContent(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!formData.name) {
+      alert("Please enter a category name first");
+      return;
+    }
+
+    setGeneratingImage(true);
+    try {
+      const parentCategory = parentCategories.find((c) => c.id === formData.parentId);
+
+      const response = await fetch("/api/ai/generate-category-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryName: formData.name,
+          description: formData.description,
+          isSubcategory: !!formData.parentId,
+          parentCategoryName: parentCategory?.name || "",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Generation failed");
+
+      const data = await response.json();
+      setFormData((prev) => ({ ...prev, image: data.imageUrl }));
+    } catch (error) {
+      console.error("Generation error:", error);
+      alert("Failed to generate image");
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
+  const handleGenerateSEO = async () => {
+    if (!formData.name) {
+      alert("Please enter a category name first");
+      return;
+    }
+
+    setGeneratingSEO(true);
+    try {
+      const parentCategory = parentCategories.find((c) => c.id === formData.parentId);
+
+      const response = await fetch("/api/ai/generate-category-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryName: formData.name,
+          isSubcategory: !!formData.parentId,
+          parentCategoryName: parentCategory?.name || "",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Generation failed");
+
+      const data = await response.json();
+      setFormData((prev) => ({
+        ...prev,
+        metaTitle: data.metaTitle,
+        metaDescription: data.metaDescription,
+        keywords: data.keywords.join(", "),
+      }));
+    } catch (error) {
+      console.error("SEO generation error:", error);
+      alert("Failed to generate SEO content");
+    } finally {
+      setGeneratingSEO(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -128,7 +239,25 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Basic Information */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Basic Information</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">Basic Information</h2>
+          <button
+            type="button"
+            onClick={handleGenerateContent}
+            disabled={generatingContent || !formData.name}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
+          >
+            {generatingContent ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {generatingContent ? "Generating..." : "AI Generate All"}
+          </button>
+        </div>
+        <p className="text-sm text-slate-400">
+          Generate description and SEO content automatically using AI
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -231,7 +360,7 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
                 className="w-32 h-32 object-cover rounded-lg border border-slate-700"
               />
             )}
-            <div className="flex-1">
+            <div className="flex-1 space-y-2">
               <label className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors">
                 {uploading ? (
                   <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
@@ -249,7 +378,24 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
                   disabled={uploading}
                 />
               </label>
-              <p className="text-xs text-slate-500 mt-2">
+
+              <button
+                type="button"
+                onClick={handleGenerateImage}
+                disabled={generatingImage || !formData.name}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg disabled:opacity-50 transition-all"
+              >
+                {generatingImage ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <ImagePlus className="w-5 h-5" />
+                )}
+                <span className="text-slate-300">
+                  {generatingImage ? "Generating..." : "AI Generate Image"}
+                </span>
+              </button>
+
+              <p className="text-xs text-slate-500">
                 Recommended: 800x800px, JPG or PNG
               </p>
             </div>
@@ -259,7 +405,25 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
 
       {/* SEO */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">SEO Settings</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">SEO Settings</h2>
+          <button
+            type="button"
+            onClick={handleGenerateSEO}
+            disabled={generatingSEO || !formData.name}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
+          >
+            {generatingSEO ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {generatingSEO ? "Generating..." : "AI Generate SEO"}
+          </button>
+        </div>
+        <p className="text-sm text-slate-400">
+          Generate meta title, description, and keywords automatically using AI
+        </p>
 
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">

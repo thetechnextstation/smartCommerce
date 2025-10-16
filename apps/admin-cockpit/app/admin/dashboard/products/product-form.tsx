@@ -50,6 +50,9 @@ export function ProductForm({
   const [generatingDesc, setGeneratingDesc] = useState(false);
   const [generatingTags, setGeneratingTags] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatingSEO, setGeneratingSEO] = useState(false);
+  const [skuError, setSkuError] = useState("");
+  const [slugError, setSlugError] = useState("");
 
   const [formData, setFormData] = useState({
     name: product?.name || "",
@@ -96,6 +99,54 @@ export function ProductForm({
   const [compositeObject, setCompositeObject] = useState("");
   const [compositeLocation, setCompositeLocation] = useState("");
 
+  // Check if SKU is unique
+  const checkSKUUnique = async (sku: string) => {
+    if (!sku || sku.length < 3) return;
+
+    try {
+      const response = await fetch(
+        `/api/products/check-unique?sku=${encodeURIComponent(sku)}${
+          isEdit ? `&excludeId=${product.id}` : ""
+        }`
+      );
+      const data = await response.json();
+
+      if (!data.available && data.conflicts.includes("sku")) {
+        setSkuError(
+          `SKU "${sku}" is already used by "${data.existingProduct.name}"`
+        );
+      } else {
+        setSkuError("");
+      }
+    } catch (error) {
+      console.error("Error checking SKU:", error);
+    }
+  };
+
+  // Check if slug is unique
+  const checkSlugUnique = async (slug: string) => {
+    if (!slug || slug.length < 3) return;
+
+    try {
+      const response = await fetch(
+        `/api/products/check-unique?slug=${encodeURIComponent(slug)}${
+          isEdit ? `&excludeId=${product.id}` : ""
+        }`
+      );
+      const data = await response.json();
+
+      if (!data.available && data.conflicts.includes("slug")) {
+        setSlugError(
+          `Slug "${slug}" is already used by "${data.existingProduct.name}"`
+        );
+      } else {
+        setSlugError("");
+      }
+    } catch (error) {
+      console.error("Error checking slug:", error);
+    }
+  };
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
@@ -108,13 +159,37 @@ export function ProductForm({
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
 
+    // Check SKU uniqueness
+    if (name === "sku") {
+      checkSKUUnique(value);
+    }
+
+    // Check slug uniqueness
+    if (name === "slug") {
+      checkSlugUnique(value);
+    }
+
     // Auto-generate slug from name
     if (name === "name" && !isEdit) {
       const slug = value
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
-      setFormData((prev) => ({ ...prev, slug }));
+
+      // Auto-generate SKU from name if empty
+      const sku = value
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "")
+        .substring(0, 12) + "-" + Date.now().toString().slice(-4);
+
+      setFormData((prev) => ({
+        ...prev,
+        slug,
+        sku: formData.sku || sku // Only set SKU if it's empty
+      }));
+
+      // Check generated slug uniqueness
+      checkSlugUnique(slug);
     }
   };
 
@@ -270,6 +345,47 @@ export function ProductForm({
     }
   };
 
+  const handleGenerateSEO = async () => {
+    if (!formData.name || !formData.categoryId) {
+      alert("Please enter product name and select category first");
+      return;
+    }
+
+    setGeneratingSEO(true);
+    try {
+      const category = categories.find((c) => c.id === formData.categoryId);
+      const response = await fetch("/api/ai/generate-product-seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: formData.name,
+          description: formData.description || formData.shortDescription || "",
+          category: category?.name || "Product",
+          brand: formData.brand || "",
+          price: formData.price || 0,
+        }),
+      });
+
+      if (!response.ok) throw new Error("SEO generation failed");
+
+      const data = await response.json();
+      setFormData((prev) => ({
+        ...prev,
+        metaTitle: data.metaTitle,
+        metaDescription: data.metaDescription,
+      }));
+    } catch (error) {
+      console.error("SEO generation error:", error);
+      alert("Failed to generate SEO content");
+    } finally {
+      setGeneratingSEO(false);
+    }
+  };
+
+  const [searchingSku, setSearchingSku] = useState(false);
+  const [skuSearchResults, setSkuSearchResults] = useState<any[]>([]);
+  const [showSkuSearch, setShowSkuSearch] = useState<number | null>(null);
+
   const addVariant = () => {
     setVariants((prev) => [
       ...prev,
@@ -277,8 +393,15 @@ export function ProductForm({
         name: "",
         sku: "",
         price: formData.price || 0,
+        compareAtPrice: null,
+        costPrice: null,
         stock: 0,
         options: {},
+        isBaseProduct: false,
+        baseProductId: null,
+        image: null,
+        images: [],
+        isActive: true,
       },
     ]);
   };
@@ -291,6 +414,35 @@ export function ProductForm({
     setVariants((prev) =>
       prev.map((v, i) => (i === index ? { ...v, [field]: value } : v))
     );
+  };
+
+  const searchProductBySku = async (query: string, variantIndex: number) => {
+    if (!query || query.length < 2) {
+      setSkuSearchResults([]);
+      return;
+    }
+
+    setSearchingSku(true);
+    try {
+      const response = await fetch(
+        `/api/products?search=${encodeURIComponent(query)}&limit=10`
+      );
+      const data = await response.json();
+      setSkuSearchResults(data.products || []);
+      setShowSkuSearch(variantIndex);
+    } catch (error) {
+      console.error("Error searching products:", error);
+    } finally {
+      setSearchingSku(false);
+    }
+  };
+
+  const selectBaseProduct = (variantIndex: number, product: any) => {
+    updateVariant(variantIndex, "baseProductId", product.id);
+    updateVariant(variantIndex, "baseProductSku", product.sku);
+    updateVariant(variantIndex, "baseProductName", product.name);
+    setShowSkuSearch(null);
+    setSkuSearchResults([]);
   };
 
   const addAttribute = () => {
@@ -319,6 +471,24 @@ export function ProductForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate variants
+    if (variants.length > 0) {
+      const invalidVariants = variants.filter(v => !v.name || !v.sku || !v.price);
+      if (invalidVariants.length > 0) {
+        alert("Please fill in all required fields (Name, SKU, Price) for all variants");
+        return;
+      }
+
+      // Check for duplicate variant SKUs
+      const variantSkus = variants.map(v => v.sku);
+      const duplicateSkus = variantSkus.filter((sku, index) => variantSkus.indexOf(sku) !== index);
+      if (duplicateSkus.length > 0) {
+        alert(`Duplicate variant SKUs found: ${duplicateSkus.join(", ")}`);
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -337,7 +507,17 @@ export function ProductForm({
           .map((t) => t.trim())
           .filter(Boolean),
         images,
-        variants,
+        variants: variants.map(v => ({
+          ...v,
+          price: typeof v.price === 'string' ? parseFloat(v.price) : v.price,
+          compareAtPrice: v.compareAtPrice && typeof v.compareAtPrice === 'string'
+            ? parseFloat(v.compareAtPrice)
+            : v.compareAtPrice,
+          costPrice: v.costPrice && typeof v.costPrice === 'string'
+            ? parseFloat(v.costPrice)
+            : v.costPrice,
+          stock: typeof v.stock === 'string' ? parseInt(v.stock) : v.stock,
+        })),
         attributes,
       };
 
@@ -397,9 +577,16 @@ export function ProductForm({
               value={formData.sku}
               onChange={handleChange}
               required
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full px-4 py-3 bg-slate-800/50 border ${
+                skuError ? 'border-red-500' : 'border-slate-700'
+              } rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${
+                skuError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
+              }`}
               placeholder="e.g., IPH15PRO"
             />
+            {skuError && (
+              <p className="mt-1 text-sm text-red-400">{skuError}</p>
+            )}
           </div>
         </div>
 
@@ -414,9 +601,16 @@ export function ProductForm({
               value={formData.slug}
               onChange={handleChange}
               required
-              className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full px-4 py-3 bg-slate-800/50 border ${
+                slugError ? 'border-red-500' : 'border-slate-700'
+              } rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 ${
+                slugError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
+              }`}
               placeholder="e.g., iphone-15-pro"
             />
+            {slugError && (
+              <p className="mt-1 text-sm text-red-400">{slugError}</p>
+            )}
           </div>
 
           <div>
@@ -940,10 +1134,10 @@ export function ProductForm({
         </div>
       </div>
 
-      {/* Variants (Simplified - show count for now) */}
+      {/* Variants */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Variants</h2>
+          <h2 className="text-xl font-semibold text-white">Product Variants</h2>
           <button
             type="button"
             onClick={addVariant}
@@ -955,8 +1149,229 @@ export function ProductForm({
         </div>
 
         {variants.length > 0 && (
-          <div className="text-sm text-slate-400">
-            {variants.length} variant(s) configured
+          <div className="space-y-4">
+            {variants.map((variant, index) => (
+              <div
+                key={index}
+                className="p-6 bg-slate-800/50 border border-slate-700 rounded-xl space-y-4"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-white">
+                    Variant {index + 1}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => removeVariant(index)}
+                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Variant Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={variant.name}
+                      onChange={(e) =>
+                        updateVariant(index, "name", e.target.value)
+                      }
+                      required
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="e.g., Medium - Blue"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      SKU *
+                    </label>
+                    <input
+                      type="text"
+                      value={variant.sku}
+                      onChange={(e) =>
+                        updateVariant(index, "sku", e.target.value)
+                      }
+                      required
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="e.g., PROD-M-BLU"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Price *
+                    </label>
+                    <input
+                      type="number"
+                      value={variant.price}
+                      onChange={(e) =>
+                        updateVariant(index, "price", parseFloat(e.target.value))
+                      }
+                      required
+                      step="0.01"
+                      min="0"
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Compare at Price
+                    </label>
+                    <input
+                      type="number"
+                      value={variant.compareAtPrice || ""}
+                      onChange={(e) =>
+                        updateVariant(
+                          index,
+                          "compareAtPrice",
+                          e.target.value ? parseFloat(e.target.value) : null
+                        )
+                      }
+                      step="0.01"
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Stock
+                    </label>
+                    <input
+                      type="number"
+                      value={variant.stock}
+                      onChange={(e) =>
+                        updateVariant(index, "stock", parseInt(e.target.value))
+                      }
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                {/* Base Product Configuration */}
+                <div className="border-t border-slate-600 pt-4">
+                  <div className="flex items-center gap-4 mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={variant.isBaseProduct || false}
+                        onChange={(e) =>
+                          updateVariant(index, "isBaseProduct", e.target.checked)
+                        }
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-slate-300 font-medium">
+                        Is Base Product
+                      </span>
+                    </label>
+                  </div>
+
+                  {!variant.isBaseProduct && (
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Base Product (Optional)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={variant.baseProductName || ""}
+                          onChange={(e) => {
+                            updateVariant(index, "baseProductName", e.target.value);
+                            searchProductBySku(e.target.value, index);
+                          }}
+                          onFocus={() => setShowSkuSearch(index)}
+                          className="w-full px-4 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="Search by product name or SKU..."
+                        />
+                        {searchingSku && showSkuSearch === index && (
+                          <div className="absolute right-3 top-3">
+                            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {showSkuSearch === index && skuSearchResults.length > 0 && (
+                        <div className="absolute z-10 w-full mt-2 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                          {skuSearchResults.map((product) => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              onClick={() => selectBaseProduct(index, product)}
+                              className="w-full px-4 py-3 text-left hover:bg-slate-700 transition-colors border-b border-slate-700 last:border-0"
+                            >
+                              <div className="text-white font-medium">
+                                {product.name}
+                              </div>
+                              <div className="text-sm text-slate-400">
+                                SKU: {product.sku} | Price: ${product.price}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {variant.baseProductId && (
+                        <div className="mt-2 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm text-slate-300">
+                                Selected Base Product:
+                              </div>
+                              <div className="text-white font-medium">
+                                {variant.baseProductName}
+                              </div>
+                              <div className="text-sm text-slate-400">
+                                SKU: {variant.baseProductSku}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateVariant(index, "baseProductId", null);
+                                updateVariant(index, "baseProductSku", null);
+                                updateVariant(index, "baseProductName", null);
+                              }}
+                              className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={variant.isActive !== false}
+                      onChange={(e) =>
+                        updateVariant(index, "isActive", e.target.checked)
+                      }
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-slate-300 text-sm">Active</span>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {variants.length === 0 && (
+          <div className="text-center py-8 text-slate-400">
+            No variants configured. Click "Add Variant" to create product variations.
           </div>
         )}
       </div>
@@ -984,7 +1399,22 @@ export function ProductForm({
 
       {/* SEO */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">SEO Settings</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">SEO Settings</h2>
+          <button
+            type="button"
+            onClick={handleGenerateSEO}
+            disabled={generatingSEO || !formData.name || !formData.categoryId}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
+          >
+            {generatingSEO ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {generatingSEO ? "Generating..." : "AI Generate SEO"}
+          </button>
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">

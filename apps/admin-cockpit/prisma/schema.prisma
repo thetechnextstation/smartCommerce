@@ -101,7 +101,9 @@ model Product {
   aiGenerated       Boolean  @default(false) // Track AI-assisted products
   aiImageGenerated  Boolean  @default(false) // AI generated images
   aiDescGenerated   Boolean  @default(false) // AI generated description
+  aiTagsGenerated   Boolean  @default(false) // AI generated tags
   vectorId          String?  @unique // Pinecone vector ID for semantic search
+  embedding         Json?    // Store embedding vector directly
 
   // Product specifications (for AI to understand product better)
   specifications    Json?     // Flexible field for product specs
@@ -115,6 +117,13 @@ model Product {
   status            ProductStatus @default(DRAFT)
   featured          Boolean  @default(false)
   trending          Boolean  @default(false)
+
+  // Variants and Custom Attributes
+  variants          ProductVariant[]
+  attributes        ProductAttribute[]
+
+  // Base Product relationships
+  variantOf         ProductVariant[] @relation("BaseProduct")
 
   // Relationships
   reviews           Review[]
@@ -476,4 +485,104 @@ enum StockLevel {
   LOW
   OUT_OF_STOCK
   OVERSTOCKED
+}
+
+// Product Variants (e.g., different sizes, colors)
+model ProductVariant {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name        String   // e.g., "Small - Red", "Medium - Blue"
+  sku         String   @unique
+  barcode     String?
+
+  // Pricing
+  price       Float
+  compareAtPrice Float?
+  costPrice   Float?
+
+  // Inventory
+  stock       Int      @default(0)
+
+  // Variant specifics
+  options     Json     // e.g., {"size": "M", "color": "Red"}
+
+  // Media
+  image       String?
+  images      String[]
+
+  // Base Product Configuration
+  isBaseProduct Boolean  @default(false)
+  baseProductId String?  // Reference to base product SKU
+  baseProduct   Product? @relation("BaseProduct", fields: [baseProductId], references: [id])
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([productId])
+  @@index([sku])
+  @@index([isBaseProduct])
+  @@index([baseProductId])
+}
+
+// Custom Attribute Definitions (Admin creates these)
+model AttributeDefinition {
+  id          String   @id @default(cuid())
+  name        String   @unique  // e.g., "Warranty Period", "Material Type"
+  slug        String   @unique
+  description String?
+
+  // Data type for the attribute
+  dataType    AttributeDataType @default(TEXT)
+
+  // Validation rules
+  isRequired  Boolean  @default(false)
+  options     String[] // For SELECT type: predefined options
+  unit        String?  // e.g., "cm", "kg", "months"
+
+  // Display
+  displayOrder Int     @default(0)
+  isActive    Boolean  @default(true)
+
+  // Relationships
+  attributes  ProductAttribute[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+enum AttributeDataType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  DATE
+  JSON
+}
+
+// Product Attributes (Values for each product)
+model ProductAttribute {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  attributeDefinitionId String
+  attributeDefinition   AttributeDefinition @relation(fields: [attributeDefinitionId], references: [id], onDelete: Cascade)
+
+  // The actual value (stored as JSON for flexibility)
+  value       Json
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, attributeDefinitionId])
+  @@index([productId])
+  @@index([attributeDefinitionId])
 }

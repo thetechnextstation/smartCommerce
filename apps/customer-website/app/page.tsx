@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { Sparkles, Search, TrendingUp, Zap, ShoppingCart } from "lucide-react";
+import { SemanticSearchBar } from "@/components/SemanticSearchBar";
 
 export default function Home() {
   return (
@@ -54,19 +55,7 @@ export default function Home() {
 
           {/* Search Bar */}
           <div className="max-w-2xl mx-auto">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Try searching: 'comfortable running shoes for marathon training'..."
-                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent backdrop-blur-xl"
-              />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                <span className="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs font-medium">
-                  AI Search
-                </span>
-              </div>
-            </div>
+            <SemanticSearchBar />
           </div>
 
           {/* CTA Buttons */}
