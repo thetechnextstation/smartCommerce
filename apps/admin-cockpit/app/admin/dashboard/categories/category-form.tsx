@@ -316,15 +316,15 @@ export function CategoryForm({ parentCategories, category, isEdit = false }: Cat
               onChange={handleChange}
               className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">None (Root Category)</option>
-              {parentCategories.map((cat) => (
+              <option value="">None (Root Category - Level 1)</option>
+              {parentCategories.map((cat: any) => (
                 <option key={cat.id} value={cat.id}>
-                  {cat.name}
+                  {cat.parent ? `${cat.parent.name} > ${cat.name}` : cat.name}
                 </option>
               ))}
             </select>
             <p className="text-xs text-slate-500 mt-1">
-              Only root categories can have subcategories (max 2 levels)
+              Supports up to 3 levels (e.g., Clothing &gt; Men &gt; Jeans)
             </p>
           </div>
 

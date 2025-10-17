@@ -51,6 +51,8 @@ export function ProductForm({
   const [generatingTags, setGeneratingTags] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatingSEO, setGeneratingSEO] = useState(false);
+  const [generatingShortDesc, setGeneratingShortDesc] = useState(false);
+  const [generatingBrand, setGeneratingBrand] = useState(false);
   const [skuError, setSkuError] = useState("");
   const [slugError, setSlugError] = useState("");
 
@@ -382,6 +384,80 @@ export function ProductForm({
     }
   };
 
+  const handleGenerateShortDescription = async () => {
+    if (!formData.name || !formData.categoryId) {
+      alert("Please enter product name and select category first");
+      return;
+    }
+
+    setGeneratingShortDesc(true);
+    try {
+      const category = categories.find((c) => c.id === formData.categoryId);
+      const response = await fetch("/api/ai/generate-product-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: formData.name,
+          category: category?.name || "Product",
+          description: formData.description || "",
+          generateType: "shortDescription",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Short description generation failed");
+
+      const data = await response.json();
+      if (data.shortDescription) {
+        setFormData((prev) => ({
+          ...prev,
+          shortDescription: data.shortDescription,
+        }));
+      }
+    } catch (error) {
+      console.error("Short description generation error:", error);
+      alert("Failed to generate short description");
+    } finally {
+      setGeneratingShortDesc(false);
+    }
+  };
+
+  const handleGenerateBrand = async () => {
+    if (!formData.name || !formData.categoryId) {
+      alert("Please enter product name and select category first");
+      return;
+    }
+
+    setGeneratingBrand(true);
+    try {
+      const category = categories.find((c) => c.id === formData.categoryId);
+      const response = await fetch("/api/ai/generate-product-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: formData.name,
+          category: category?.name || "Product",
+          description: formData.description || "",
+          generateType: "brand",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Brand generation failed");
+
+      const data = await response.json();
+      if (data.brand) {
+        setFormData((prev) => ({
+          ...prev,
+          brand: data.brand,
+        }));
+      }
+    } catch (error) {
+      console.error("Brand generation error:", error);
+      alert("Failed to generate brand");
+    } finally {
+      setGeneratingBrand(false);
+    }
+  };
+
   const [searchingSku, setSearchingSku] = useState(false);
   const [skuSearchResults, setSkuSearchResults] = useState<any[]>([]);
   const [showSkuSearch, setShowSkuSearch] = useState<number | null>(null);
@@ -636,17 +712,36 @@ export function ProductForm({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Short Description
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-slate-300">
+              Short Description
+            </label>
+            <button
+              type="button"
+              onClick={handleGenerateShortDescription}
+              disabled={generatingShortDesc || !formData.name || !formData.categoryId}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
+            >
+              {generatingShortDesc ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              {generatingShortDesc ? "Generating..." : "AI Generate"}
+            </button>
+          </div>
           <input
             type="text"
             name="shortDescription"
             value={formData.shortDescription}
             onChange={handleChange}
+            maxLength={100}
             className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Brief one-line description"
+            placeholder="Brief one-line description (max 100 chars)"
           />
+          <p className="mt-1 text-xs text-slate-400">
+            {formData.shortDescription.length}/100 characters
+          </p>
         </div>
 
         <div>
@@ -680,9 +775,24 @@ export function ProductForm({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Brand
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-300">
+                Brand
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateBrand}
+                disabled={generatingBrand || !formData.name || !formData.categoryId}
+                className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
+              >
+                {generatingBrand ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {generatingBrand ? "Generating..." : "AI Generate"}
+              </button>
+            </div>
             <input
               type="text"
               name="brand"
@@ -701,7 +811,7 @@ export function ProductForm({
               <button
                 type="button"
                 onClick={handleGenerateTags}
-                disabled={generatingTags}
+                disabled={generatingTags || !formData.name || !formData.categoryId}
                 className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm rounded-lg disabled:opacity-50 transition-all"
               >
                 {generatingTags ? (

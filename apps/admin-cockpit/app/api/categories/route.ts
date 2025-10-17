@@ -110,7 +110,11 @@ export async function POST(request: NextRequest) {
     if (parentId) {
       const parentCategory = await db.category.findUnique({
         where: { id: parentId },
-        include: { parent: true },
+        include: {
+          parent: {
+            include: { parent: true }
+          }
+        },
       })
 
       if (!parentCategory) {
@@ -120,10 +124,10 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Prevent more than 2 levels of nesting
-      if (parentCategory.parentId) {
+      // Prevent more than 3 levels of nesting (Level 1 > Level 2 > Level 3)
+      if (parentCategory.parent?.parentId) {
         return NextResponse.json(
-          { error: 'Cannot create subcategory. Maximum 2 levels allowed.' },
+          { error: 'Cannot create subcategory. Maximum 3 levels allowed (e.g., Clothing > Men > Jeans).' },
           { status: 400 }
         )
       }
@@ -140,7 +144,7 @@ export async function POST(request: NextRequest) {
         metaTitle,
         metaDescription,
         keywords: keywords || [],
-        position: position || 0,
+        position: position ? parseInt(position as string) : 0,
         isActive: isActive !== undefined ? isActive : true,
         isFeatured: isFeatured || false,
         icon,

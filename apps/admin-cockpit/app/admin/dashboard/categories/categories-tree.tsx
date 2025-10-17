@@ -34,13 +34,16 @@ interface CategoriesTreeProps {
 
 interface TreeNodeProps {
   category: Category;
-  children: Category[];
+  allCategories: Category[];
   level: number;
   onDelete: (id: string, name: string) => void;
 }
 
-function TreeNode({ category, children, level, onDelete }: TreeNodeProps) {
+function TreeNode({ category, allCategories, level, onDelete }: TreeNodeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+
+  // Get direct children of this category
+  const children = allCategories.filter((c) => c.parentId === category.id);
   const hasChildren = children.length > 0;
 
   return (
@@ -159,14 +162,14 @@ function TreeNode({ category, children, level, onDelete }: TreeNodeProps) {
         )}
       </div>
 
-      {/* Children */}
+      {/* Children - Recursively render all levels */}
       {hasChildren && isExpanded && (
         <div className="mt-3 space-y-3 relative">
           {children.map((child) => (
             <TreeNode
               key={child.id}
               category={child}
-              children={[]}
+              allCategories={allCategories}
               level={level + 1}
               onDelete={onDelete}
             />
@@ -178,10 +181,8 @@ function TreeNode({ category, children, level, onDelete }: TreeNodeProps) {
 }
 
 export function CategoriesTree({ categories }: CategoriesTreeProps) {
-  // Organize categories into parent-child structure
+  // Get root categories (level 1)
   const rootCategories = categories.filter((c) => !c.parentId);
-  const getChildren = (parentId: string) =>
-    categories.filter((c) => c.parentId === parentId);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
@@ -211,7 +212,7 @@ export function CategoriesTree({ categories }: CategoriesTreeProps) {
         </div>
         <h3 className="text-xl font-semibold text-white mb-2">No categories yet</h3>
         <p className="text-slate-400 mb-6">
-          Create your first category to start organizing products
+          Create your first category to start organizing products (up to 3 levels: e.g., Clothing &gt; Men &gt; Jeans)
         </p>
       </div>
     );
@@ -223,7 +224,7 @@ export function CategoriesTree({ categories }: CategoriesTreeProps) {
         <TreeNode
           key={category.id}
           category={category}
-          children={getChildren(category.id)}
+          allCategories={categories}
           level={0}
           onDelete={handleDelete}
         />

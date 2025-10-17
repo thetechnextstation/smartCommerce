@@ -89,7 +89,11 @@ export async function PUT(
         // Validate parent exists
         const newParent = await db.category.findUnique({
           where: { id: body.parentId },
-          include: { parent: true },
+          include: {
+            parent: {
+              include: { parent: true }
+            }
+          },
         })
 
         if (!newParent) {
@@ -107,24 +111,43 @@ export async function PUT(
           )
         }
 
-        // Prevent more than 2 levels
-        if (newParent.parentId) {
+        // Prevent more than 3 levels (e.g., Clothing > Men > Jeans)
+        if (newParent.parent?.parentId) {
           return NextResponse.json(
-            { error: 'Cannot move category. Maximum 2 levels allowed.' },
+            { error: 'Cannot move category. Maximum 3 levels allowed (e.g., Clothing > Men > Jeans).' },
             { status: 400 }
           )
         }
 
-        // If current category has children, prevent making it a subcategory
-        const hasChildren = await db.category.count({
-          where: { parentId: id },
+        // If current category has children, check if moving would exceed 3 levels
+        const categoryWithChildren = await db.category.findUnique({
+          where: { id },
+          include: {
+            children: {
+              include: {
+                children: true
+              }
+            }
+          }
         })
 
-        if (hasChildren > 0) {
-          return NextResponse.json(
-            { error: 'Cannot move category with subcategories to a subcategory level' },
-            { status: 400 }
-          )
+        if (categoryWithChildren?.children && categoryWithChildren.children.length > 0) {
+          // If new parent has a parent (making this a level 3), and current category has children, that would create level 4
+          if (newParent.parentId) {
+            return NextResponse.json(
+              { error: 'Cannot move category with subcategories to level 3. This would exceed maximum 3 levels.' },
+              { status: 400 }
+            )
+          }
+
+          // Check if any children have their own children
+          const hasGrandchildren = categoryWithChildren.children.some(child => child.children && child.children.length > 0)
+          if (hasGrandchildren && newParent.parentId === null) {
+            return NextResponse.json(
+              { error: 'Cannot move category with nested subcategories (3 levels deep already exist).' },
+              { status: 400 }
+            )
+          }
         }
       }
     }
@@ -141,7 +164,7 @@ export async function PUT(
         metaTitle: body.metaTitle,
         metaDescription: body.metaDescription,
         keywords: body.keywords,
-        position: body.position,
+        position: body.position !== undefined ? (typeof body.position === 'string' ? parseInt(body.position) : body.position) : undefined,
         isActive: body.isActive,
         isFeatured: body.isFeatured,
         icon: body.icon,

@@ -24,14 +24,31 @@ export default async function EditCategoryPage({
     notFound();
   }
 
-  // Fetch existing categories for parent selection
+  // Fetch all categories for parent selection (up to 3 levels)
   // Exclude current category and its children to prevent circular references
+  const allChildren = await db.category.findMany({
+    where: {
+      OR: [
+        { parentId: id },
+        { parent: { parentId: id } },
+      ]
+    },
+    select: { id: true }
+  });
+
+  const excludeIds = [id, ...allChildren.map(c => c.id)];
+
   const parentCategories = await db.category.findMany({
     where: {
-      parentId: null,
-      id: { not: id },
+      id: { notIn: excludeIds },
     },
-    orderBy: { name: "asc" },
+    include: {
+      parent: true,
+    },
+    orderBy: [
+      { parentId: 'asc' },
+      { name: 'asc' }
+    ],
   });
 
   return (

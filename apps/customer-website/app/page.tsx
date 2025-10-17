@@ -1,160 +1,180 @@
-import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
-import { Sparkles, Search, TrendingUp, Zap, ShoppingCart } from "lucide-react";
-import { SemanticSearchBar } from "@/components/SemanticSearchBar";
+"use client"
+
+import { useEffect, useState } from "react"
+import { HomeBanner } from "@/components/HomeBanner"
+import { ProductSection } from "@/components/ProductSection"
+import RecommendedProducts from "@/components/RecommendedProducts"
+
+interface Product {
+  id: string
+  name: string
+  slug: string
+  price: number
+  compareAtPrice?: number | null
+  thumbnail?: string | null
+  images?: Array<{ url: string }>
+  stock: number
+  featured?: boolean
+  trending?: boolean
+  reviews?: Array<{ rating: number }>
+  _count?: {
+    reviews: number
+  }
+}
 
 export default function Home() {
+  const [heroProducts, setHeroProducts] = useState<Product[]>([])
+  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([])
+  const [personalizedProducts, setPersonalizedProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    // Fetch all product sections
+    const fetchProducts = async () => {
+      try {
+        setIsLoading(true)
+
+        // Fetch hero products
+        const heroRes = await fetch("/api/products/hero")
+        const heroData = await heroRes.json()
+        setHeroProducts(heroData.products || [])
+
+        // Get viewed products from localStorage for recommendations
+        const viewedProducts = localStorage.getItem("viewedProducts")
+        const viewedIds = viewedProducts ? JSON.parse(viewedProducts) : []
+
+        // Fetch recommended products
+        const recommendedRes = await fetch(
+          `/api/products/recommended${viewedIds.length > 0 ? `?viewed=${viewedIds.join(",")}` : ""}`
+        )
+        const recommendedData = await recommendedRes.json()
+        setRecommendedProducts(recommendedData.products || [])
+
+        // Fetch personalized products
+        const personalizedRes = await fetch(
+          `/api/products/personalized${viewedIds.length > 0 ? `?viewed=${viewedIds.join(",")}` : ""}`
+        )
+        const personalizedData = await personalizedRes.json()
+        setPersonalizedProducts(personalizedData.products || [])
+      } catch (error) {
+        console.error("Error fetching products:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProducts()
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900">
-      {/* Header */}
-      <header className="border-b border-white/10 backdrop-blur-xl bg-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-8 h-8 text-indigo-400" />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                SmartCommerce
-              </h1>
-            </div>
-            <nav className="hidden md:flex items-center gap-8">
-              <Link href="/products" className="text-slate-300 hover:text-white transition-colors">
-                Products
-              </Link>
-              <Link href="/search" className="text-slate-300 hover:text-white transition-colors">
-                Search
-              </Link>
-              <Link href="/deals" className="text-slate-300 hover:text-white transition-colors">
-                Deals
-              </Link>
-            </nav>
-            <div className="flex items-center gap-4">
-              <Link href="/cart" className="text-slate-300 hover:text-white transition-colors">
-                <ShoppingCart className="w-6 h-6" />
-              </Link>
-              <UserButton afterSignOutUrl="/" />
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen">
+      {/* Hero Banner */}
+      <HomeBanner />
 
-      {/* Hero Section */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="text-center space-y-8">
-          <div className="space-y-4">
-            <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tight">
-              The Future of
-              <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Smart Shopping
-              </span>
-            </h1>
-            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-              Experience AI-powered semantic search, dynamic pricing, and personalized recommendations
-              that understand exactly what you need.
+      {/* Hero Products Section */}
+      {heroProducts.length > 0 && (
+        <ProductSection
+          title="Featured Products"
+          subtitle="Handpicked items just for you"
+          products={heroProducts}
+          viewAllLink="/products?featured=true"
+        />
+      )}
+
+      {/* AI-Powered Personalized Recommendations */}
+      <div className="bg-gradient-to-br from-indigo-950/30 to-purple-950/30 border-y border-white/5">
+        <RecommendedProducts type="personalized" limit={10} />
+      </div>
+
+      {/* Recently Viewed */}
+      <RecommendedProducts type="recently-viewed" limit={8} />
+
+      {/* Trending Products */}
+      <div className="bg-slate-900/30">
+        <RecommendedProducts type="trending" limit={10} />
+      </div>
+
+      {/* Features Section */}
+      <section className="py-16 bg-slate-900/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              Why Shop With Us?
+            </h2>
+            <p className="text-slate-400 max-w-2xl mx-auto">
+              Experience the future of e-commerce with AI-powered features
             </p>
           </div>
 
-          {/* Search Bar */}
-          <div className="max-w-2xl mx-auto">
-            <SemanticSearchBar />
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link
-              href="/products"
-              className="group px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-lg shadow-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/60 hover:scale-[1.02] transition-all"
-            >
-              Explore Products
-              <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
-            </Link>
-            <Link
-              href="/how-it-works"
-              className="px-8 py-4 rounded-xl border-2 border-white/20 text-white font-semibold hover:bg-white/10 backdrop-blur-xl transition-all"
-            >
-              How It Works
-            </Link>
-          </div>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mt-24">
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-white/10 backdrop-blur-xl hover:scale-[1.02] transition-transform">
-            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center mb-4">
-              <Sparkles className="w-6 h-6 text-indigo-400" />
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="p-6 rounded-xl bg-slate-900/50 border border-white/10 hover:border-indigo-500/50 transition-all">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                AI Semantic Search
+              </h3>
+              <p className="text-slate-400">
+                Find exactly what you're looking for using natural language. Our AI understands context, not just keywords.
+              </p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">AI Semantic Search</h3>
-            <p className="text-slate-400">
-              Find products using natural language. Our AI understands context and intent, not just keywords.
-            </p>
-          </div>
 
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-white/10 backdrop-blur-xl hover:scale-[1.02] transition-transform">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-4">
-              <TrendingUp className="w-6 h-6 text-purple-400" />
+            <div className="p-6 rounded-xl bg-slate-900/50 border border-white/10 hover:border-purple-500/50 transition-all">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                Smart Recommendations
+              </h3>
+              <p className="text-slate-400">
+                Get personalized product suggestions powered by machine learning based on your browsing and purchase history.
+              </p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Smart Price Alerts</h3>
-            <p className="text-slate-400">
-              Get notified when prices drop on your favorite items. Never miss a deal again.
-            </p>
-          </div>
 
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-pink-500/10 to-rose-500/10 border border-white/10 backdrop-blur-xl hover:scale-[1.02] transition-transform">
-            <div className="w-12 h-12 rounded-xl bg-pink-500/20 flex items-center justify-center mb-4">
-              <Zap className="w-6 h-6 text-pink-400" />
+            <div className="p-6 rounded-xl bg-slate-900/50 border border-white/10 hover:border-pink-500/50 transition-all">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                Price Drop Alerts
+              </h3>
+              <p className="text-slate-400">
+                Never miss a deal. Set price alerts and get notified when your favorite products go on sale.
+              </p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">AI Bargaining</h3>
-            <p className="text-slate-400">
-              Let our AI negotiate the best possible price for you. Dynamic discounts based on demand.
-            </p>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-24">
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">50K+</div>
-            <div className="text-slate-400">Products</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">98%</div>
-            <div className="text-slate-400">AI Accuracy</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">24/7</div>
-            <div className="text-slate-400">Price Tracking</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">$2M+</div>
-            <div className="text-slate-400">Saved by Users</div>
-          </div>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-white/10 mt-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-indigo-400" />
-              <span className="text-slate-400">SmartCommerce © 2025</span>
-            </div>
-            <div className="flex gap-8">
-              <Link href="/about" className="text-slate-400 hover:text-white transition-colors">
-                About
-              </Link>
-              <Link href="/privacy" className="text-slate-400 hover:text-white transition-colors">
-                Privacy
-              </Link>
-              <Link href="/terms" className="text-slate-400 hover:text-white transition-colors">
-                Terms
-              </Link>
-              <Link href="/contact" className="text-slate-400 hover:text-white transition-colors">
-                Contact
-              </Link>
+            <div className="p-6 rounded-xl bg-slate-900/50 border border-white/10 hover:border-emerald-500/50 transition-all">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                AI Price Negotiator
+              </h3>
+              <p className="text-slate-400">
+                Chat with our AI to negotiate better prices. Get personalized discounts based on your loyalty and product availability.
+              </p>
             </div>
           </div>
         </div>
-      </footer>
+      </section>
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="py-16">
+          <div className="container mx-auto px-4 text-center">
+            <div className="inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-400 mt-4">Loading products...</p>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }

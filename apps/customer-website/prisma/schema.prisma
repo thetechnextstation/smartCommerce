@@ -29,6 +29,7 @@ model User {
   priceAlerts   PriceAlert[]
   searchHistory SearchHistory[]
   preferences   UserPreference?
+  activities    UserActivity[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -244,6 +245,9 @@ model CartItem {
   productId String
   product   Product  @relation(fields: [productId], references: [id])
 
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
   quantity  Int      @default(1)
   price     Float    // Price at time of adding to cart
 
@@ -256,6 +260,7 @@ model CartItem {
 
   @@index([cartId])
   @@index([productId])
+  @@index([variantId])
 }
 
 // Orders
@@ -275,18 +280,41 @@ model Order {
   discount        Float       @default(0)
   total           Float
 
+  // Coupon/Discount
+  couponCode      String?
+  couponDiscount  Float       @default(0)
+
   // Payment
   paymentStatus   PaymentStatus @default(PENDING)
   paymentIntentId String?     @unique // Stripe Payment Intent ID
-  paymentMethod   String?
+  paymentMethod   String?     // e.g., "card", "paypal"
+  stripeCustomerId String?
 
-  // Shipping
-  shippingAddress Json
-  billingAddress  Json
+  // Shipping Information (detailed fields for checkout)
+  shippingName    String
+  shippingEmail   String
+  shippingPhone   String?
+  shippingAddress String
+  shippingCity    String
+  shippingState   String
+  shippingZip     String
+  shippingCountry String      @default("US")
+
+  // Billing Address (can be same as shipping)
+  billingAddress  Json?
+  sameAsShipping  Boolean     @default(true)
+
+  // Shipping Method
+  shippingMethod  String?     // e.g., "standard", "express", "overnight"
   trackingNumber  String?
+  estimatedDelivery DateTime?
+  deliveredAt     DateTime?
 
   // Status
   status          OrderStatus @default(PENDING)
+
+  // Notes
+  customerNotes   String?     @db.Text
 
   // Timestamps
   createdAt       DateTime    @default(now())
@@ -324,13 +352,18 @@ model OrderItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
   quantity  Int
   price     Float   // Price at time of purchase
+  subtotal  Float   // quantity * price
 
   createdAt DateTime @default(now())
 
   @@index([orderId])
   @@index([productId])
+  @@index([variantId])
 }
 
 // Reviews
@@ -512,6 +545,10 @@ model ProductVariant {
   // Status
   isActive    Boolean  @default(true)
 
+  // Relationships
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -575,4 +612,180 @@ model ProductAttribute {
   @@unique([productId, attributeDefinitionId])
   @@index([productId])
   @@index([attributeDefinitionId])
+}
+
+// User Activity Tracking for Personalization
+model UserActivity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Activity details
+  activityType ActivityType
+  productId    String?
+  categoryId   String?
+  searchQuery  String?
+
+  // Metadata
+  metadata     Json?    // Additional data like time spent, scroll depth, etc.
+  sessionId    String?  // Track user sessions
+
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([activityType])
+  @@index([createdAt])
+  @@index([sessionId])
+}
+
+enum ActivityType {
+  PRODUCT_VIEW
+  ADD_TO_CART
+  REMOVE_FROM_CART
+  PURCHASE
+  SEARCH
+  CATEGORY_VIEW
+  WISHLIST_ADD
+  REVIEW_WRITE
+}
+
+// AI Bargaining & Discount Coupons
+model Coupon {
+  id            String   @id @default(cuid())
+  code          String   @unique
+
+  // Coupon details
+  discountType  DiscountType
+  discountValue Float    // Percentage or fixed amount
+
+  // Usage restrictions
+  minPurchase   Float?
+  maxDiscount   Float?   // Max discount cap for percentage discounts
+  usageLimit    Int?     // Total usage limit
+  usageCount    Int      @default(0)
+  perUserLimit  Int?     // Per user limit
+
+  // Validity
+  validFrom     DateTime
+  validUntil    DateTime
+  isActive      Boolean  @default(true)
+
+  // AI Bargaining specific
+  isAIGenerated Boolean  @default(false)
+  userId        String?  // If generated for specific user
+  productId     String?  // If product-specific
+
+  // Metadata
+  description   String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([userId])
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+// AI Chat Sessions for Bargaining
+model ChatSession {
+  id          String   @id @default(cuid())
+  userId      String?  // Can be anonymous
+  productId   String?  // If discussing a specific product
+
+  messages    ChatMessage[]
+
+  // Session metadata
+  sessionType SessionType @default(BARGAINING)
+  status      ChatStatus  @default(ACTIVE)
+
+  // Outcome
+  couponGenerated String?  // Coupon code if discount was given
+  dealAccepted    Boolean  @default(false)
+  finalDiscount   Float?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  closedAt    DateTime?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+}
+
+enum SessionType {
+  BARGAINING
+  SUPPORT
+  PRODUCT_INQUIRY
+}
+
+enum ChatStatus {
+  ACTIVE
+  CLOSED
+  ESCALATED
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role        MessageRole
+  content     String   @db.Text
+
+  // AI metadata
+  modelUsed   String?  // e.g., "gpt-4"
+  tokens      Int?
+
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// Product Recommendations
+model ProductRecommendation {
+  id              String   @id @default(cuid())
+  userId          String
+
+  productId       String
+  recommendedBy   RecommendationType
+  score           Float    // Relevance score
+
+  // Context
+  basedOnProductId String? // If recommendation is based on another product
+  basedOnCategory  String?
+
+  // Tracking
+  shown           Boolean  @default(false)
+  clicked         Boolean  @default(false)
+  converted       Boolean  @default(false) // Did user purchase?
+
+  createdAt       DateTime @default(now())
+  shownAt         DateTime?
+  clickedAt       DateTime?
+  convertedAt     DateTime?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([recommendedBy])
+}
+
+enum RecommendationType {
+  PERSONALIZED_AI
+  SIMILAR_PRODUCTS
+  FREQUENTLY_BOUGHT_TOGETHER
+  TRENDING
+  RECENTLY_VIEWED
+  CATEGORY_POPULAR
 }

@@ -32,13 +32,14 @@ This is a monorepo containing:
 - **Authentication**: Clerk
 
 ### AI & Machine Learning
-- **LLM**: Claude (Anthropic) via API
-- **Vector Database**: Pinecone (for semantic search)
+- **LLM**: OpenAI GPT-4 (for chat & reasoning)
+- **Embeddings**: OpenAI text-embedding-3-small (for semantic search)
+- **Storage**: PostgreSQL with JSON embedding fields
 - **Features**:
   - AI-powered semantic product search
-  - Smart price negotiations
-  - Personalized recommendations
-  - Predictive analytics
+  - Smart price negotiations with context-aware AI
+  - Personalized recommendations using collaborative filtering
+  - User activity tracking for behavioral analysis
 
 ### Payments & Automation
 - **Payments**: Stripe
@@ -47,15 +48,48 @@ This is a monorepo containing:
 
 ## Features
 
-### Customer Features
-- **AI Semantic Search**: Natural language product search understanding context and intent
-- **Price Drop Alerts**: Automated notifications via n8n when prices drop
-- **AI Bargaining**: Dynamic discounts based on demand and negotiation
-- **Smart Personalization**: AI-driven product recommendations
-- **Smart Cart**: Abandoned cart recovery with automated follow-ups
-- **Price Tracking**: 24/7 monitoring of price changes
+### 🤖 AI-Powered Customer Features
 
-### Admin Features
+#### 1. **AI Semantic Search**
+- Natural language understanding (e.g., "dress for summer wedding in Italy")
+- Vector embeddings using OpenAI's `text-embedding-3-small`
+- Cosine similarity matching for relevant results
+- Instant search results modal with AI/keyword toggle
+
+#### 2. **AI Price Negotiator (Chatbot)**
+- Interactive chat widget on product pages
+- Dynamic discount rules based on:
+  - Customer purchase history & loyalty
+  - Product stock levels (overstock = higher discounts)
+  - Repeat customer bonuses
+- Auto-generates single-use coupon codes
+- Tracks all negotiation sessions
+
+#### 3. **Smart Personalization Engine**
+- **Multiple Recommendation Types:**
+  - Personalized (based on user taste profile)
+  - Similar Products (embedding-based)
+  - Trending Now
+  - Recently Viewed
+  - Frequently Bought Together
+- User activity tracking across all interactions
+- Real-time relevance scoring
+
+#### 4. **Price Drop Alerts with n8n**
+- Users set target prices for products
+- Automated daily checks via n8n workflows
+- Email/SMS notifications when prices drop
+- Shows savings and discount percentages
+
+### 🛒 Core E-Commerce Features
+- Shopping cart with real-time updates
+- Wishlist functionality
+- Product reviews and ratings
+- User authentication via Clerk
+- Order management
+- Inventory tracking
+
+### 👨‍💼 Admin Features
 - **AI-Assisted Product Loading**: Bulk import with AI-generated descriptions
 - **Predictive Stock Analysis**: AI forecasts for inventory management
 - **Trend Analysis**: Real-time insights on product performance
@@ -108,13 +142,15 @@ CLERK_SECRET_KEY=sk_test_xxxxx
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxx
 STRIPE_SECRET_KEY=sk_test_xxxxx
 
-# AI
-ANTHROPIC_API_KEY=sk-ant-xxxxx
+# OpenAI (for embeddings and chat)
+OPENAI_API_KEY=sk-xxxxx
 
-# Pinecone
-PINECONE_API_KEY=xxxxx
-PINECONE_ENVIRONMENT=xxxxx
-PINECONE_INDEX=smart-commerce-products
+# Application
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+PRICE_ALERT_API_KEY=your-secret-api-key-change-this
+
+# Optional: Google AI (for image generation in admin)
+GOOGLE_GENERATIVE_AI_API_KEY=xxxxx
 ```
 
 4. **Set up the database**
@@ -192,28 +228,150 @@ The Prisma schema includes:
 - **Search History**: For AI personalization
 - **Analytics**: Trend analysis and predictions
 
-## AI Features Setup
+## AI Features Deep Dive
 
-### Semantic Search with Pinecone
+### 1. Semantic Search Implementation
 
-1. Products are automatically embedded using Claude/OpenAI
-2. Vectors are stored in Pinecone
-3. Search queries are converted to vectors
-4. Similar products are found using cosine similarity
+**How it works:**
+1. When a product is created/updated, generate an embedding vector from:
+   - Product name
+   - Description
+   - Tags
+   - Category
+   - Brand
 
-### AI Bargaining
+2. Store the 1536-dimension vector in the `product.embedding` field (JSON)
 
-1. Customer requests a discount
-2. AI analyzes product demand, stock levels, and profit margins
-3. Dynamic discount is calculated
-4. Offer is presented to customer
+3. When user searches:
+   ```typescript
+   // User query: "comfortable shoes for hiking"
+   const queryEmbedding = await generateEmbedding(query);
 
-### Price Drop Alerts (n8n)
+   // Find products with similar embeddings
+   const results = findSimilarProducts(queryEmbedding, productEmbeddings);
+   // Returns products sorted by cosine similarity
+   ```
 
-1. Price changes trigger n8n webhooks
-2. n8n workflow checks for active alerts
-3. Emails are sent to subscribed users
-4. Push notifications (optional)
+**API Endpoints:**
+- `POST /api/search/semantic` - Semantic search (with embeddings)
+- `GET /api/search/semantic?q=query` - Fallback keyword search
+
+### 2. AI Bargaining System
+
+**Business Rules (Configurable):**
+- Base maximum discount: 20%
+- Repeat customer bonus: +5%
+- High-value customer (>$500 spent): +5%
+- Overstocked items (>50 units): +5%
+
+**How it works:**
+```typescript
+const systemPrompt = `You are a sales assistant.
+Maximum discount: ${maxDiscount}%
+Customer status: ${isRepeatCustomer ? 'Loyal' : 'New'}
+Product stock: ${product.stock} units
+
+Rules:
+1. Start with highlighting value
+2. Offer smaller discounts first (5-10%)
+3. Gradually increase if customer negotiates
+4. Never exceed your maximum discount
+5. When agreeing, respond with: DEAL_ACCEPTED:15
+`;
+```
+
+**Workflow:**
+1. User opens chat widget on product page
+2. Chats with AI about price
+3. AI analyzes context and offers discount
+4. If deal accepted, system generates unique coupon code
+5. User applies coupon at checkout
+
+**API Endpoint:** `POST /api/chat/bargain`
+
+### 3. Smart Personalization
+
+**User Taste Profile Algorithm:**
+```typescript
+// 1. Get user's viewed/purchased products
+const userProducts = await getUserActivity(userId);
+
+// 2. Get their embeddings
+const embeddings = userProducts.map(p => p.embedding);
+
+// 3. Calculate average embedding (taste profile)
+const tasteProfile = averageEmbeddings(embeddings);
+
+// 4. Find similar products
+const recommendations = findSimilarProducts(tasteProfile, allProducts);
+```
+
+**Recommendation Types:**
+- **Personalized**: Based on user's taste profile
+- **Similar**: Products with similar embeddings to current product
+- **Trending**: Most viewed/purchased (last 30 days)
+- **Recently Viewed**: User's browsing history
+- **Frequently Bought Together**: Collaborative filtering based on orders
+
+**API Endpoint:** `GET /api/recommendations?type=personalized&limit=10`
+
+### 4. Price Drop Alerts (n8n Integration)
+
+**Database Schema:**
+```prisma
+model PriceAlert {
+  id          String
+  userId      String
+  productId   String
+  targetPrice Float
+  triggered   Boolean  // Set to true when price drops
+  notified    Boolean  // Set to true after email sent
+}
+```
+
+**n8n Workflow:**
+1. **Schedule Trigger**: Runs daily at 9 AM
+2. **HTTP Request**: `POST /api/price-alerts/check`
+3. **Split Into Batches**: Process each alert
+4. **Send Email**: Gmail/SMTP notification
+5. **Mark as Notified**: `PATCH /api/price-alerts/check`
+
+**Email Template Variables:**
+- `{{user.email}}`
+- `{{user.name}}`
+- `{{product.name}}`
+- `{{product.currentPrice}}`
+- `{{product.targetPrice}}`
+- `{{discount}}%`
+- `{{savings}}$`
+
+See `N8N_WORKFLOWS.md` for detailed setup instructions.
+
+### 5. User Activity Tracking
+
+**Tracked Activities:**
+- `PRODUCT_VIEW`: User views a product
+- `ADD_TO_CART`: User adds item to cart
+- `REMOVE_FROM_CART`: User removes item
+- `PURCHASE`: User completes order
+- `SEARCH`: User searches for products
+- `CATEGORY_VIEW`: User browses category
+- `WISHLIST_ADD`: User adds to wishlist
+
+**Usage:**
+```typescript
+// Track product view
+await fetch('/api/activity/track', {
+  method: 'POST',
+  body: JSON.stringify({
+    activityType: 'PRODUCT_VIEW',
+    productId: product.id,
+    sessionId: sessionId,
+  })
+});
+```
+
+This data powers personalized recommendations and analytics.
 
 ## n8n Workflows
 
