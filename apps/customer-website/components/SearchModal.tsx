@@ -50,20 +50,36 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const performSearch = async (searchQuery: string) => {
     setIsLoading(true);
     try {
-      const endpoint = useSemanticSearch
-        ? '/api/search/semantic'
-        : '/api/search/semantic';
+      let response;
 
-      const response = useSemanticSearch
-        ? await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: searchQuery, limit: 10 }),
-          })
-        : await fetch(`${endpoint}?q=${encodeURIComponent(searchQuery)}&limit=10`);
+      if (useSemanticSearch) {
+        // AI Semantic Search (POST)
+        response = await fetch('/api/search/semantic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: searchQuery, limit: 10 }),
+        });
+      } else {
+        // Keyword Search (GET)
+        response = await fetch(`/api/search/semantic?q=${encodeURIComponent(searchQuery)}&limit=10`);
+      }
 
       const data = await response.json();
-      setResults(data.results || []);
+
+      // Check if there's an error (e.g., missing embeddings)
+      if (data.error) {
+        console.error('Search API error:', data.error);
+        // Fallback to keyword search if semantic search fails
+        if (useSemanticSearch) {
+          const fallbackResponse = await fetch(`/api/search/semantic?q=${encodeURIComponent(searchQuery)}&limit=10`);
+          const fallbackData = await fallbackResponse.json();
+          setResults(fallbackData.results || []);
+        } else {
+          setResults([]);
+        }
+      } else {
+        setResults(data.results || []);
+      }
     } catch (error) {
       console.error('Search error:', error);
       setResults([]);

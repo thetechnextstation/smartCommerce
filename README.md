@@ -181,6 +181,44 @@ npm run prisma:studio
 - Get your test API keys from the dashboard
 - Set up webhooks for payment events
 
+### Generating Product Embeddings (Important for AI Search)
+
+Before you can use AI semantic search, you need to generate embeddings for your products:
+
+**Option 1: Using the script (Recommended for bulk)**
+```bash
+cd apps/customer-website
+npm run embeddings:generate
+```
+
+This will:
+- Generate embeddings for all products without embeddings
+- Show progress with success/error counts
+- Handle rate limiting automatically
+
+**Option 2: Using the API endpoint**
+```bash
+# Check embedding status
+curl http://localhost:3000/api/products/generate-embeddings
+
+# Generate embeddings via API
+curl -X POST http://localhost:3000/api/products/generate-embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"limit": 50}'
+
+# Force regenerate for specific product
+curl -X POST http://localhost:3000/api/products/generate-embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "YOUR_PRODUCT_ID", "force": true}'
+```
+
+**Option 3: Automatic generation**
+Embeddings are automatically generated when:
+- New products are created via the admin panel
+- Products are updated with new descriptions
+
+**Note:** You need a valid OPENAI_API_KEY in your .env file.
+
 ### Running the Applications
 
 **Start customer website (port 3000)**
