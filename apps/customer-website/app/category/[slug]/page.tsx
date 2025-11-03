@@ -2,33 +2,40 @@ import { Suspense } from 'react';
 import ProductGrid from '@/components/ProductGrid';
 import ProductFilters from '@/components/ProductFilters';
 import { notFound } from 'next/navigation';
+import { db } from '@/lib/db';
 
 interface CategoryPageProps {
-  params: {
+  params: Promise<{
     slug: string;
-  };
-  searchParams: { [key: string]: string | string[] | undefined };
+  }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function CategoryPage({ params, searchParams }: CategoryPageProps) {
+export default async function CategoryPage(props: CategoryPageProps) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
+
   const { slug } = params;
   const sort = typeof searchParams.sort === 'string' ? searchParams.sort : 'newest';
   const minPrice = typeof searchParams.minPrice === 'string' ? searchParams.minPrice : undefined;
   const maxPrice = typeof searchParams.maxPrice === 'string' ? searchParams.maxPrice : undefined;
   const search = typeof searchParams.search === 'string' ? searchParams.search : undefined;
 
-  // Fetch category details
-  const categoryResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/categories?slug=${slug}`,
-    { cache: 'no-store' }
-  );
-
-  if (!categoryResponse.ok) {
-    notFound();
-  }
-
-  const categories = await categoryResponse.json();
-  const category = categories.find((c: any) => c.slug === slug);
+  // Fetch category details directly from database
+  const category = await db.category.findUnique({
+    where: {
+      slug: slug,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      image: true,
+      icon: true,
+    },
+  });
 
   if (!category) {
     notFound();
@@ -102,18 +109,16 @@ function ProductGridSkeleton() {
 }
 
 export async function generateStaticParams() {
-  const categoriesResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/categories`,
-    { cache: 'no-store' }
-  );
+  const categories = await db.category.findMany({
+    where: {
+      isActive: true,
+    },
+    select: {
+      slug: true,
+    },
+  });
 
-  if (!categoriesResponse.ok) {
-    return [];
-  }
-
-  const categories = await categoriesResponse.json();
-
-  return categories.map((category: any) => ({
+  return categories.map((category) => ({
     slug: category.slug,
   }));
 }

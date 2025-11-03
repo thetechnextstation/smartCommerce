@@ -17,6 +17,7 @@ import {
   X,
   Bell,
   Search,
+  Tag,
 } from "lucide-react";
 
 const navigation = [
@@ -39,6 +40,11 @@ const navigation = [
     name: "Orders",
     href: "/admin/dashboard/orders",
     icon: ShoppingCart,
+  },
+  {
+    name: "Promotions",
+    href: "/admin/dashboard/promotions",
+    icon: Tag,
   },
   {
     name: "Customers",

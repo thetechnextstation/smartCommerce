@@ -46,48 +46,23 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Semantic search with vector embeddings
+    // Semantic search with database embeddings
     try {
+      console.log(`[Semantic Search] Query: "${query}"`)
+
       // Step 1: Generate embedding for user query
       const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-small',
         input: query,
       })
 
       const queryEmbedding = embeddingResponse.data[0].embedding
+      console.log(`[Semantic Search] Generated query embedding with ${queryEmbedding.length} dimensions`)
 
-      // Step 2: Search Pinecone for similar products
-      const index = pinecone.index(PINECONE_INDEX_NAME)
-
-      // Build Pinecone filters
-      const pineconeFilter: any = {}
-
-      // Note: Pinecone filters work with metadata stored during embedding
-      // We'll do additional filtering in the database query
-
-      const searchResults = await index.query({
-        vector: queryEmbedding,
-        topK: Math.min(limit * 3, 100), // Get more results for filtering
-        includeMetadata: true,
-        filter: pineconeFilter,
-      })
-
-      // Step 3: Get product IDs from vector search
-      const productIds = searchResults.matches?.map((match) => match.id) || []
-
-      if (productIds.length === 0) {
-        return NextResponse.json({
-          products: [],
-          query,
-          total: 0,
-          searchType: 'semantic',
-        })
-      }
-
-      // Step 4: Build database filters
+      // Step 2: Get all products with embeddings from database
       const where: any = {
-        id: { in: productIds },
         status: status || 'ACTIVE',
+        embedding: { not: null },
       }
 
       if (categoryId) {
@@ -112,40 +87,105 @@ export async function GET(request: NextRequest) {
         where.brand = { contains: brand, mode: 'insensitive' }
       }
 
-      // Step 5: Fetch full product data with filters
       const products = await db.product.findMany({
         where,
-        include: {
-          category: true,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          shortDescription: true,
+          price: true,
+          compareAtPrice: true,
+          thumbnail: true,
+          embedding: true,
+          stock: true,
+          brand: true,
+          color: true,
+          size: true,
+          category: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
           images: {
             orderBy: { position: 'asc' },
             take: 1,
+            select: {
+              url: true,
+              alt: true,
+            },
           },
           variants: {
             where: { isActive: true },
             take: 5,
           },
         },
-        take: limit,
       })
 
-      // Step 6: Sort by vector similarity score
-      const productScoreMap = new Map(
-        searchResults.matches?.map((match) => [match.id, match.score || 0])
-      )
+      console.log(`[Semantic Search] Found ${products.length} products with embeddings`)
+      console.log(`[Semantic Search] Products with embeddings: ${products.filter(p => p.embedding).length}`)
 
-      const sortedProducts = products.sort((a, b) => {
-        const scoreA = productScoreMap.get(a.id) || 0
-        const scoreB = productScoreMap.get(b.id) || 0
-        return scoreB - scoreA
-      })
+      // Step 3: Calculate similarities using cosine similarity
+      const cosineSimilarity = (a: number[], b: number[]): number => {
+        let dotProduct = 0
+        let normA = 0
+        let normB = 0
+        for (let i = 0; i < a.length; i++) {
+          dotProduct += a[i] * b[i]
+          normA += a[i] * a[i]
+          normB += b[i] * b[i]
+        }
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+      }
+
+      const productsWithScores = products
+        .filter((p) => p.embedding)
+        .map((p) => {
+          try {
+            // Parse embedding from Json to number array
+            let embeddingArray: number[];
+            if (Array.isArray(p.embedding)) {
+              embeddingArray = p.embedding as number[];
+            } else {
+              // If it's stored as JSON, parse it
+              embeddingArray = JSON.parse(JSON.stringify(p.embedding)) as number[];
+            }
+
+            const similarity = cosineSimilarity(queryEmbedding, embeddingArray);
+
+            return {
+              ...p,
+              similarity,
+            };
+          } catch (error) {
+            console.error(`[Semantic Search] Error processing embedding for product ${p.id}:`, error);
+            return {
+              ...p,
+              similarity: 0,
+            };
+          }
+        })
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit)
+
+      console.log(`[Semantic Search] Top results:`, productsWithScores.slice(0, 3).map(p => ({
+        name: p.name,
+        similarity: p.similarity
+      })))
+
+      // Remove embedding from response
+      const finalProducts = productsWithScores.map(({ embedding, similarity, ...product }) => ({
+        ...product,
+        similarity, // Include similarity score for debugging
+      }))
 
       return NextResponse.json({
-        products: sortedProducts,
+        products: finalProducts,
         query,
-        total: sortedProducts.length,
+        total: finalProducts.length,
         searchType: 'semantic',
-        scores: Object.fromEntries(productScoreMap),
       })
     } catch (vectorError) {
       console.error('Vector search error:', vectorError)

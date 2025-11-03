@@ -21,6 +21,8 @@ export interface CartItem {
 interface CartStore {
   items: CartItem[]
   isOpen: boolean
+  appliedPromotion: any | null
+  discount: number
 
   // Actions
   addItem: (item: Omit<CartItem, 'quantity'>) => void
@@ -30,6 +32,8 @@ interface CartStore {
   toggleCart: () => void
   openCart: () => void
   closeCart: () => void
+  applyPromotion: (promotion: any, discount: number) => void
+  removePromotion: () => void
 
   // Computed values
   itemCount: number
@@ -43,6 +47,8 @@ export const useCartStore = create<CartStore>()(
       isOpen: false,
       itemCount: 0,
       subtotal: 0,
+      appliedPromotion: null,
+      discount: 0,
 
       addItem: (newItem) => {
         const items = get().items
@@ -140,7 +146,9 @@ export const useCartStore = create<CartStore>()(
           items: [],
           isOpen: false,
           itemCount: 0,
-          subtotal: 0
+          subtotal: 0,
+          appliedPromotion: null,
+          discount: 0
         })
       },
 
@@ -155,13 +163,29 @@ export const useCartStore = create<CartStore>()(
       closeCart: () => {
         set({ isOpen: false })
       },
+
+      applyPromotion: (promotion, discount) => {
+        set({
+          appliedPromotion: promotion,
+          discount
+        })
+      },
+
+      removePromotion: () => {
+        set({
+          appliedPromotion: null,
+          discount: 0
+        })
+      },
     }),
     {
       name: 'cart-storage',
       partialize: (state) => ({
         items: state.items,
         itemCount: state.itemCount,
-        subtotal: state.subtotal
+        subtotal: state.subtotal,
+        appliedPromotion: state.appliedPromotion,
+        discount: state.discount
       })
     }
   )

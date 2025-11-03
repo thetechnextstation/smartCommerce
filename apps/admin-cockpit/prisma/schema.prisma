@@ -93,6 +93,8 @@ model Product {
   // Media
   images            ProductImage[]
   thumbnail         String?
+  cloudinaryUrl     String?  // Main Cloudinary image URL
+  cloudinaryPublicId String? // Cloudinary public ID for transformations
 
   // SEO & AI
   metaTitle         String?
@@ -164,6 +166,10 @@ model ProductImage {
   url       String
   alt       String?
   position  Int      @default(0)
+
+  // Cloudinary metadata
+  cloudinaryPublicId String?  // For image transformations and management
+  cloudinaryUrl      String?  // Full Cloudinary URL with transformations
 
   // AI Generation metadata
   aiGenerated       Boolean  @default(false)
@@ -585,4 +591,133 @@ model ProductAttribute {
   @@unique([productId, attributeDefinitionId])
   @@index([productId])
   @@index([attributeDefinitionId])
+}
+
+// Promotion Engine Models
+model Promotion {
+  id              String          @id @default(cuid())
+  name            String
+  description     String?         @db.Text
+  code            String?         @unique // Coupon code if applicable
+
+  // Promotion Type
+  type            PromotionType
+
+  // Discount Configuration
+  discountType    DiscountType
+  discountValue   Float           // Percentage or fixed amount
+  maxDiscount     Float?          // Max discount cap for percentage
+
+  // Applicability
+  applyTo         ApplyToType     @default(ORDER)
+
+  // Target Entities (JSON arrays of IDs)
+  productIds      String[]        @default([])
+  categoryIds     String[]        @default([])
+  customerIds     String[]        @default([])
+
+  // Conditions
+  minPurchase     Float?
+  minQuantity     Int?
+  maxQuantity     Int?
+
+  // BOGO Configuration
+  bogoConfig      Json?           // {buyQty: 2, getQty: 1, applyTo: "same"|"different"}
+
+  // Free Gift Configuration
+  freeGiftConfig  Json?           // {productIds: [], quantity: 1}
+
+  // Usage Limits
+  usageLimit      Int?            // Total usage limit
+  perUserLimit    Int?            // Per user limit
+  usageCount      Int             @default(0)
+
+  // Validity
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean         @default(true)
+
+  // Priority (higher = applied first)
+  priority        Int             @default(0)
+
+  // Stacking
+  canStack        Boolean         @default(false)
+  stacksWith      String[]        @default([]) // IDs of promotions it can stack with
+
+  // AI Personalization
+  isAIGenerated   Boolean         @default(false)
+  aiConfig        Json?           // AI personalization config
+
+  // Visibility
+  isPublic        Boolean         @default(true)
+  showOnWebsite   Boolean         @default(true)
+
+  // Metadata
+  tags            String[]        @default([])
+  internalNotes   String?         @db.Text
+
+  // Relationships
+  usage           PromotionUsage[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([code])
+  @@index([type])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+enum PromotionType {
+  COUPON              // Code-based discount
+  AUTOMATIC           // Auto-applied discount
+  CART_DISCOUNT       // Cart-level discount
+  PRODUCT_DISCOUNT    // Product-level discount
+  CATEGORY_DISCOUNT   // Category-level discount
+  BOGO                // Buy One Get One
+  FREE_GIFT           // Free gift with purchase
+  FREE_SHIPPING       // Free shipping
+  CUSTOMER_SPECIFIC   // Customer-specific promotion
+  AI_PERSONALIZED     // AI-generated personalized offer
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FIXED_PRICE         // Set product to specific price
+}
+
+enum ApplyToType {
+  ORDER               // Apply to entire order
+  PRODUCT             // Apply to specific products
+  CATEGORY            // Apply to specific categories
+  SHIPPING            // Apply to shipping
+  CHEAPEST            // Apply to cheapest item
+  MOST_EXPENSIVE      // Apply to most expensive item
+}
+
+// Track promotion usage
+model PromotionUsage {
+  id            String    @id @default(cuid())
+
+  promotionId   String
+  promotion     Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  userId        String?
+  orderId       String?
+
+  // Discount applied
+  discountAmount Float
+
+  // Context
+  cartValue     Float?
+  orderTotal    Float?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([promotionId])
+  @@index([userId])
+  @@index([orderId])
+  @@index([createdAt])
 }

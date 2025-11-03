@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { currentUser } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
+import { PromotionService } from '@/lib/services/promotion-service';
 
 const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -19,9 +20,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { paymentIntentId, shippingInfo } = await request.json();
+    const { paymentIntentId, shippingInfo, items, promotionId, discount } = await request.json();
 
-    if (!paymentIntentId || !shippingInfo) {
+    if (!paymentIntentId || !shippingInfo || !items || items.length === 0) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -55,35 +56,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get cart items from payment intent metadata or from request
-    // For now, we'll need to pass items in the request
-    const cart = await prisma.cart.findUnique({
-      where: { userId: dbUser.id },
-      include: {
-        items: {
-          include: {
-            product: true,
-            variant: true,
-          },
-        },
-      },
-    });
-
-    if (!cart || cart.items.length === 0) {
-      return NextResponse.json(
-        { error: 'Cart is empty' },
-        { status: 400 }
-      );
-    }
-
-    // Calculate totals
-    const subtotal = cart.items.reduce(
-      (total, item) => total + item.price * item.quantity,
+    // Calculate totals from provided items
+    const subtotal = items.reduce(
+      (total: number, item: any) => total + item.price * item.quantity,
       0
     );
-    const tax = subtotal * 0.08; // 8% tax
-    const shipping = 10; // Flat rate shipping
-    const total = subtotal + tax + shipping;
+    const discountAmount = discount || 0;
+    const tax = subtotal * 0.1; // 10% tax
+    const shipping = subtotal > 50 ? 0 : 10; // Free shipping over $50
+    const total = subtotal - discountAmount + tax + shipping;
 
     // Generate unique order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`;
@@ -94,12 +75,14 @@ export async function POST(request: NextRequest) {
         orderNumber,
         userId: dbUser.id,
         subtotal,
+        discount: discountAmount,
         tax,
         shipping,
         total,
         paymentIntentId,
         paymentStatus: 'PAID',
         status: 'PROCESSING',
+        promotionId: promotionId || null,
         shippingName: shippingInfo.name,
         shippingEmail: shippingInfo.email,
         shippingPhone: shippingInfo.phone || '',
@@ -109,9 +92,9 @@ export async function POST(request: NextRequest) {
         shippingZip: shippingInfo.zip,
         shippingCountry: shippingInfo.country,
         items: {
-          create: cart.items.map((item) => ({
+          create: items.map((item: any) => ({
             productId: item.productId,
-            variantId: item.variantId,
+            variantId: item.variantId || null,
             quantity: item.quantity,
             price: item.price,
             subtotal: item.price * item.quantity,
@@ -129,7 +112,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Update product stock and purchase counts
-    for (const item of cart.items) {
+    for (const item of items) {
       await prisma.product.update({
         where: { id: item.productId },
         data: {
@@ -148,13 +131,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Clear cart
-    await prisma.cartItem.deleteMany({
-      where: { cartId: cart.id },
-    });
-
     // Track purchase activity
-    for (const item of cart.items) {
+    for (const item of items) {
       await prisma.userActivity.create({
         data: {
           userId: dbUser.id,
@@ -167,6 +145,18 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+    }
+
+    // Record promotion usage if applicable
+    if (promotionId && discountAmount > 0) {
+      await PromotionService.recordPromotionUsage(
+        promotionId,
+        dbUser.id,
+        order.id,
+        discountAmount,
+        subtotal,
+        total
+      );
     }
 
     return NextResponse.json({

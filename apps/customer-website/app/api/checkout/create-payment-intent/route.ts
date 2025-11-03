@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to cents
       currency: 'usd',
+      description: `E-commerce order for ${items.length} item(s)`, // Required for Indian regulations
       customer: stripeCustomerId,
       metadata: {
         clerkUserId: user.id,

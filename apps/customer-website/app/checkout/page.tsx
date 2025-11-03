@@ -15,7 +15,7 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
 export default function CheckoutPage() {
   const { user } = useUser();
   const router = useRouter();
-  const { items, subtotal, clearCart } = useCartStore();
+  const { items, subtotal, clearCart, appliedPromotion, discount } = useCartStore();
   const [clientSecret, setClientSecret] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -32,12 +32,22 @@ export default function CheckoutPage() {
 
   const createPaymentIntent = async () => {
     try {
-      const response = await fetch('/api/checkout/create-payment-intent', {
+      // Calculate total amount
+      const tax = subtotal * 0.1;
+      const shipping = subtotal > 50 ? 0 : 10;
+      const total = subtotal - discount + tax + shipping;
+
+      const response = await fetch('/api/stripe/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items,
-          userId: user?.id,
+          amount: total,
+          currency: 'usd',
+          metadata: {
+            userId: user?.id || 'guest',
+            itemCount: items.length,
+            promotionCode: appliedPromotion?.code || null,
+          },
         }),
       });
 
@@ -167,17 +177,25 @@ export default function CheckoutPage() {
                   <span>Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-green-400">
+                    <span className="flex items-center gap-2">
+                      Discount {appliedPromotion?.code && `(${appliedPromotion.code})`}
+                    </span>
+                    <span>-${discount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-400">
-                  <span>Shipping</span>
-                  <span>Calculated at next step</span>
+                  <span>Tax (10%)</span>
+                  <span>${(subtotal * 0.1).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>Tax</span>
-                  <span>Calculated at next step</span>
+                  <span>Shipping</span>
+                  <span>{subtotal > 50 ? 'FREE' : '$10.00'}</span>
                 </div>
                 <div className="border-t border-white/10 pt-3 flex justify-between text-white text-lg font-bold">
                   <span>Total</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span>${(subtotal - discount + subtotal * 0.1 + (subtotal > 50 ? 0 : 10)).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -205,7 +223,7 @@ function CheckoutForm() {
   const elements = useElements();
   const router = useRouter();
   const { user } = useUser();
-  const { clearCart } = useCartStore();
+  const { items, subtotal, clearCart, appliedPromotion, discount } = useCartStore();
 
   const [processing, setProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -265,14 +283,30 @@ function CheckoutForm() {
         setProcessing(false);
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         // Create order in database
-        await fetch('/api/orders/create', {
+        const orderResponse = await fetch('/api/orders/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             paymentIntentId: paymentIntent.id,
             shippingInfo,
+            items: items.map(item => ({
+              productId: item.productId,
+              variantId: item.variantId,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            promotionId: appliedPromotion?.id,
+            discount: discount || 0,
           }),
         });
+
+        if (!orderResponse.ok) {
+          const errorData = await orderResponse.json();
+          console.error('Order creation failed:', errorData);
+          setErrorMessage('Payment succeeded but order creation failed. Please contact support.');
+          setProcessing(false);
+          return;
+        }
 
         // Clear cart
         clearCart();

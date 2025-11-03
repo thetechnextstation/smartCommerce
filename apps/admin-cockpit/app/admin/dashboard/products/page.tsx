@@ -15,17 +15,7 @@ export default async function ProductsPage() {
         take: 1,
         orderBy: { position: "asc" },
       },
-      variants: {
-        include: {
-          baseProduct: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-            },
-          },
-        },
-      },
+      variants: true,
     },
     orderBy: { createdAt: "desc" },
   });

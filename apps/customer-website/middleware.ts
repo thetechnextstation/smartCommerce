@@ -12,11 +12,13 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
+  '/cart(.*)',
+  '/category(.*)',
+  '/product(.*)',
 ]);
 
 // Protected routes that require authentication
 const isProtectedRoute = createRouteMatcher([
-  '/cart(.*)',
   '/checkout(.*)',
   '/orders(.*)',
   '/profile(.*)',

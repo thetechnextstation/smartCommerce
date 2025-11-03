@@ -94,6 +94,8 @@ model Product {
   // Media
   images            ProductImage[]
   thumbnail         String?
+  cloudinaryUrl     String?  // Main Cloudinary image URL
+  cloudinaryPublicId String? // Cloudinary public ID for transformations
 
   // SEO & AI
   metaTitle         String?
@@ -162,6 +164,10 @@ model ProductImage {
   url       String
   alt       String?
   position  Int      @default(0)
+
+  // Cloudinary metadata
+  cloudinaryPublicId String?  // For image transformations and management
+  cloudinaryUrl      String?  // Full Cloudinary URL with transformations
 
   // AI Generation metadata
   aiGenerated       Boolean  @default(false)
